@@ -9,7 +9,7 @@ from matplotlib.path import Path
 
 from .geometry import circos_radius, get_cartesian, node_theta
 from .utils import (cmaps, infer_data_type, is_data_diverging,
-                    num_discrete_groups)
+                    num_discrete_groups, n_group_colorpallet)
 
 logging.basicConfig(level=logging.INFO)
 
@@ -70,12 +70,13 @@ class BasePlot(object):
     def __init__(self, graph, node_order=None, node_size=None,
                  node_grouping=None, node_color=None, node_labels=None,
                  edge_width=None, edge_color=None, data_types=None,
-                 nodeprops=None, edgeprops=None, **kwargs):
+                 nodeprops=None, edgeprops=None, node_label_color=False,
+                 **kwargs):
         super(BasePlot, self).__init__()
         # Set graph object
         self.graph = graph
         self.nodes = list(graph.nodes())  # keep track of nodes separately.
-        self.edges = list(graph.edges())  # keep track of edges separately.
+        self.edges = list(graph.edges())
         # Set node arrangement
         self.node_order = node_order
         self.node_grouping = node_grouping
@@ -131,6 +132,10 @@ class BasePlot(object):
         else:
             self.edgeprops = {'facecolor': 'none',
                               'alpha': 0.2}
+        if node_label_color:
+            self.node_label_color = self.node_colors
+        else:
+            self.node_label_color = ['black'] * len(self.nodes)
 
         # Compute each node's positions.
         self.compute_node_positions()
@@ -178,7 +183,11 @@ class BasePlot(object):
         n_grps = num_discrete_groups(data)
 
         if dtype == 'categorical' or dtype == 'ordinal':
-            cmap = get_cmap(cmaps['Accent_{0}'.format(n_grps)].mpl_colormap)
+            if n_grps <= 8:
+                cmap = \
+                    get_cmap(cmaps['Accent_{0}'.format(n_grps)].mpl_colormap)
+            else:
+                cmap = n_group_colorpallet(n_grps)
         elif dtype == 'continuous' and not is_data_diverging(data):
             cmap = get_cmap(cmaps['continuous'].mpl_colormap)
         elif dtype == 'continuous' and is_data_diverging(data):
@@ -188,7 +197,7 @@ class BasePlot(object):
             idx = data_reduced.index(d) / n_grps
             self.node_colors.append(cmap(idx))
 
-        # Add colorbar if required.
+        # Add colorbar if required.ListedColormap
         logging.debug('length of data_reduced: {0}'.format(len(data_reduced)))
         logging.debug('dtype: {0}'.format(dtype))
         if len(data_reduced) > 1 and dtype == 'continuous':
@@ -206,11 +215,13 @@ class BasePlot(object):
         dtype = infer_data_type(data)
         n_grps = num_discrete_groups(data)
         if dtype == 'categorical' or dtype == 'ordinal':
-            cmap = get_cmap(cmaps['Accent_{0}'.format(n_grps)].mpl_colormap)
+            if n_grps <= 8:
+                cmap = \
+                    get_cmap(cmaps['Accent_{0}'.format(n_grps)].mpl_colormap)
+            else:
+                cmap = n_group_colorpallet(n_grps)
         elif dtype == 'continuous' and not is_data_diverging(data):
             cmap = get_cmap(cmaps['weights'])
-        # elif dtype == 'continuous' and is_data_diverging(data):
-            # cmap = get_cmap(cmaps['diverging'].mpl_colormap)
 
         for d in data:
             idx = data_reduced.index(d) / n_grps
@@ -319,7 +330,6 @@ class CircosPlot(BasePlot):
         for node in self.nodes:
             theta = node_theta(self.nodes, node)
             radius = self.plot_radius + self.nodeprops['radius']
-
             x, y = get_cartesian(r=radius, theta=theta)
 
             # Computes the text alignment
@@ -356,14 +366,16 @@ class CircosPlot(BasePlot):
                                         lw=lw, color=color,
                                         zorder=2)
             self.ax.add_patch(node_patch)
-            if self.node_labels:
+            if self.node_labels[i]:
                 label_x = self.node_label_coords['x'][i]
                 label_y = self.node_label_coords['y'][i]
                 label_ha = self.node_label_aligns['has'][i]
                 label_va = self.node_label_aligns['vas'][i]
+
                 self.ax.text(s=node,
                              x=label_x, y=label_y,
-                             ha=label_ha, va=label_va)
+                             ha=label_ha, va=label_va,
+                             color=self.node_label_color[i], fontsize=10)
 
     def draw_edges(self):
         """
@@ -378,8 +390,8 @@ class CircosPlot(BasePlot):
             color = self.edge_colors[i]
             codes = [Path.MOVETO, Path.CURVE3, Path.CURVE3]
             path = Path(verts, codes)
-            patch = patches.PathPatch(path, lw=1, **self.edgeprops,
-                                      edgecolor=color, zorder=1)
+            patch = patches.PathPatch(path, lw=1, edgecolor=color,
+                                      zorder=1, **self.edgeprops)
             self.ax.add_patch(patch)
 
 
@@ -620,7 +632,7 @@ class ArcPlot(BasePlot):
             codes = [Path.MOVETO, Path.CURVE3, Path.CURVE3]
 
             path = Path(verts, codes)
-            patch = patches.PathPatch(path, lw=1, **self.edgeprops, zorder=1)
+            patch = patches.PathPatch(path, lw=1, zorder=1, **self.edgeprops)
             self.ax.add_patch(patch)
 
     def draw(self):
